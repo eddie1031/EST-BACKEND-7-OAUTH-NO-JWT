@@ -2,14 +2,21 @@ package com.est.oauth2.service;
 
 import com.est.oauth2.dao.MemberRepository;
 import com.est.oauth2.domain.Member;
+import com.est.oauth2.dto.MemberDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -21,21 +28,32 @@ public class MemberService extends DefaultOAuth2UserService {
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
+
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
-        // 어떤 데이터가 들어오는지 확인!
-        log.info("oAuth2User = {}", oAuth2User);
+        String provider = userRequest.getClientRegistration().getRegistrationId().toUpperCase();
 
-        // 데이터베이스에 데이터 추가 여부만 확인!
-        Member member = Member.builder()
-                .name("USER1")
-                .email("user1@email.com")
-                .nickname("USER1")
-                .build();
+        MemberDetails memberDetails = MemberDetailsFactory.memberDetails(provider, oAuth2User);
 
-        memberRepository.save(member);
+        Optional<Member> memberOptional = memberRepository.findByEmail(memberDetails.getEmail());
+        Member findMember = memberOptional.orElseGet(
+                () -> {
+                    Member member = Member.builder()
+                            .email(memberDetails.getEmail())
+                            .name(memberDetails.getName())
+                            .nickname("USER")
+                            .provider(provider)
+                            .build();
+                    return memberRepository.save(member);
+                }
+        );
 
-        return oAuth2User;
+        if ( findMember.getProvider().equals(provider) ) {
+            memberDetails.setRole(findMember.getRole());
+            return memberDetails;
+        } else {
+            throw new RuntimeException();
+        }
     }
 
 }
